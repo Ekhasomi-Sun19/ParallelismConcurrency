@@ -86,57 +86,86 @@ class QueueTwoFiftyOne():
 class Manufacturer(threading.Thread):
     """ This is a manufacturer.  It will create cars and place them on the car queue """
 
-    def __init__(self):
-        self.cars_to_produce = random.randint(200, 300)     # Don't change
+    def __init__(self, cars_left, queue, sem_track, manufacturer_stats, manufacturer_id, barrier, car_count):
+
+        # this part of the code initializes a class with instance variables and synchronization
+        # objects for multi-threading, and it inherits properties and methods from its parent
+        # class using the super().__init__() call. Every varaiable and object is initialized
+        super().__init__()
+        self.cars_to_produce = random.randint(200, 300)
+        self.queue = queue
+        self.car_count = car_count
+        self.manufacturer_id = manufacturer_id
+        self.cars_left = cars_left
+        self.sem_track = sem_track
+        self.manufacturer_stats = manufacturer_stats
+        self.barrier = barrier
+
+
+
+
 
     def run(self):
-        # TODO produce the cars, the send them to the dealerships
         for i in range(self.cars_to_produce):
-            car = self.produce_car()
-            self.send_to_dealership(car)
-        
 
-        # TODO wait until all of the manufacturers are finished producing cars
-        Manufacturer_finished = threading.Condition()
+            #This code creates an instance of a Car class and releases a lock on a shared resource called "cars_left".
+            #It then acquires a lock on a shared resource called "sem_track", puts the Car instance into a queue, and
+            #repeats the process until the queue is full. it puts None into the queue, releases the lock on "cars_left",
+            #and exits the loop.
 
-        with Manufacturer_finished:
-            self.wait_for_manufacturers()  # Condition variable to signal when manufacturers are finished
+            car = Car()
+            self.cars_left.release()
+            self.sem_track.acquire()
+            self.queue.put(car)
+        self.barrier.wait()
 
-        # TODO "Wake up/signal" the dealerships one more time.
-        # Select one manufacturer to do this (hint: pass in and use the manufacturer_id)
+        if self.manufacturer_id == 0:
+            self.queue.put(None)
 
-        #the dealerships, we select one random manufacturer (selected_manufacturer) and 
-        # use the manufacturers_finished lock to call the notify_all method. 
-
-        selected_manufacturer = random.choice(Manufacturer) 
-        with Manufacturer_finished:
-            Manufacturer_finished.notify_all()
+        self.cars_left.release()
 
 
 class Dealership(threading.Thread):
-    """ This is a dealer that receives cars """
+    """ This is a dealership that receives cars """
 
-    def __init__(self):
-        pass
+    def __init__(self, queue, cars_left, sem_track, dealer_stats):
+
+        #This code is initializing a class with a queue, a semaphore object for synchronization
+        #between threads, and a lock object from the threading module. The
+        #super().__init__() call initializes the parent class and allows the current class to inherit
+        #its properties and methods.
+
+        super().__init__()
+        self.queue = queue
+        self.cars_left = cars_left
+        self.sem_track = sem_track
+        self.dealer_stats = dealer_stats
+
+
 
     def run(self):
         while True:
-            # TODO handle a car
-            #handles a car by fetching it from the car queue, processing 
-            #it using the handle_car method, and then continuing to the 
-            #next iteration of the loop. If the car queue is empty (car_queue 
-            #is an empty list), the dealership will return None from the 
-            # get_car_from_queue method.
 
-            car = self.get_car_from_Manufacturer()
-            if car is not None:
-                self.handle_car(car)
+            #This code acquires a lock on a shared resource called "cars_left" and releases a lock on a
+            #shared resource called "sem_track". It then retrieves an object from a queue and checks if
+            #it is None. If it is not None, it updates a statistic based on the current size of the queue.
+            #If it is None, it breaks out of the loop.
 
-            # Sleep a little - don't change.  This is the last line of the loop
+            self.cars_left.acquire()
+            self.sem_track.release()
+            cars = self.queue.get()
+
+            if cars == None:
+                break
+            else:
+                self.dealer_stats[self.queue.size()-1] += 1
+
+            # Sleep a little after selling a car
+            # Last statement in this for loop - don't change
             time.sleep(random.random() / (SLEEP_REDUCE_FACTOR))
 
 
-def run_production(manufacturer_count, dealer_count, manufacturer_stats, car_queue):
+def run_production(manufacturer_count, dealer_count):
     """ This function will do a production run with the number of
         manufacturers and dealerships passed in as arguments.
     """
@@ -145,8 +174,8 @@ def run_production(manufacturer_count, dealer_count, manufacturer_stats, car_que
     begin_time = time.perf_counter()
 
     # TODO Create semaphore(s)
-    sem_manufacturers = threading.Semaphore(0)
-    sem_dealerships = threading.Semaphore(MAX_QUEUE_SIZE)
+    cars_left = threading.Semaphore(0)
+    sem_track = threading.Semaphore(MAX_QUEUE_SIZE)
 
     # TODO Create queue
     car_queue = QueueTwoFiftyOne()
@@ -159,39 +188,39 @@ def run_production(manufacturer_count, dealer_count, manufacturer_stats, car_que
     # TODO Create barrier(s)
     #In the code above, num_parties represents the number of threads 
     #that need to wait at the barrier before they can proceed. 
-    barrier = threading.Barrier(2)
+    barrier = threading.Barrier(manufacturer_count)
 
     # This is used to track the number of cars receives by each dealer
     dealer_stats = list([0] * dealer_count)
+    manufacturer_stats = list([0] * manufacturer_count)
 
     # TODO create your manufacturers, each manufacturer will create CARS_TO_CREATE_PER_MANUFACTURER
-    number_manafacturers = 3
-    CARS_TO_CREATE_PER_MANUFACTURER = 100
-    manufactures = []
-    car_queue = threading.Lock()
+    manufacturers = []
+    for manufacturer in range(manufacturer_count):
+        manufacturer = Manufacturer(manufacturer_id=manufacturer, manufacturer_stats=manufacturer_stats, cars_left=cars_left, car_count=100, queue=car_queue, sem_track=sem_track, barrier=barrier)
+        manufacturers.append(manufacturer)
 
 
     # TODO create your dealerships
-    number_dealerships = 3
     dealerships = []
-    car_queue = threading.Lock()
-
-    # TODO Start all dealerships
-    for i in range(number_dealerships):
-        dealership = Dealership()
+    for dealership in range(dealer_count):
+        dealership = Dealership(sem_track=sem_track, queue=car_queue, cars_left=cars_left, dealer_stats=dealer_stats)
         dealership.start()
         dealerships.append(dealership)
 
 
     # TODO Start all manufacturers
-    for i in range(number_manafacturers):
-        manufacturer = Manufacturer(CARS_TO_CREATE_PER_MANUFACTURER)
+    for manufacturer in manufacturers:
         manufacturer.start()
-        manufactures.append(manufacturer)
+
+    # TODO Start all dealerships
+    # for manufacturer in manufacture:
+    #     manufacturer.join()
 
     # TODO Wait for manufacturers and dealerships to complete
-    for manufacturer in manufactures:
+    for manufacturer in manufacturers:
         manufacturer.join()
+
 
     for dealership in dealerships:
         dealership.join()

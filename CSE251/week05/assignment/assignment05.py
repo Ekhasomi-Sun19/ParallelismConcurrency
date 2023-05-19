@@ -91,12 +91,26 @@ class Manufacturer(threading.Thread):
 
     def run(self):
         # TODO produce the cars, the send them to the dealerships
+        for i in range(self.cars_to_produce):
+            car = self.produce_car()
+            self.send_to_dealership(car)
+        
 
         # TODO wait until all of the manufacturers are finished producing cars
+        Manufacturer_finished = threading.Condition()
+
+        with Manufacturer_finished:
+            self.wait_for_manufacturers()  # Condition variable to signal when manufacturers are finished
 
         # TODO "Wake up/signal" the dealerships one more time.
         # Select one manufacturer to do this (hint: pass in and use the manufacturer_id)
-        pass
+
+        #the dealerships, we select one random manufacturer (selected_manufacturer) and 
+        # use the manufacturers_finished lock to call the notify_all method. 
+
+        selected_manufacturer = random.choice(Manufacturer) 
+        with Manufacturer_finished:
+            Manufacturer_finished.notify_all()
 
 
 class Dealership(threading.Thread):
@@ -108,12 +122,21 @@ class Dealership(threading.Thread):
     def run(self):
         while True:
             # TODO handle a car
+            #handles a car by fetching it from the car queue, processing 
+            #it using the handle_car method, and then continuing to the 
+            #next iteration of the loop. If the car queue is empty (car_queue 
+            #is an empty list), the dealership will return None from the 
+            # get_car_from_queue method.
+
+            car = self.get_car_from_Manufacturer()
+            if car is not None:
+                self.handle_car(car)
 
             # Sleep a little - don't change.  This is the last line of the loop
             time.sleep(random.random() / (SLEEP_REDUCE_FACTOR))
 
 
-def run_production(manufacturer_count, dealer_count):
+def run_production(manufacturer_count, dealer_count, manufacturer_stats, car_queue):
     """ This function will do a production run with the number of
         manufacturers and dealerships passed in as arguments.
     """
@@ -122,22 +145,56 @@ def run_production(manufacturer_count, dealer_count):
     begin_time = time.perf_counter()
 
     # TODO Create semaphore(s)
+    sem_manufacturers = threading.Semaphore(0)
+    sem_dealerships = threading.Semaphore(MAX_QUEUE_SIZE)
+
     # TODO Create queue
+    car_queue = QueueTwoFiftyOne()
+
+
     # TODO Create lock(s)
+    lock = threading.Lock()
+
+
     # TODO Create barrier(s)
+    #In the code above, num_parties represents the number of threads 
+    #that need to wait at the barrier before they can proceed. 
+    barrier = threading.Barrier(2)
 
     # This is used to track the number of cars receives by each dealer
     dealer_stats = list([0] * dealer_count)
 
     # TODO create your manufacturers, each manufacturer will create CARS_TO_CREATE_PER_MANUFACTURER
+    number_manafacturers = 3
+    CARS_TO_CREATE_PER_MANUFACTURER = 100
+    manufactures = []
+    car_queue = threading.Lock()
+
 
     # TODO create your dealerships
+    number_dealerships = 3
+    dealerships = []
+    car_queue = threading.Lock()
 
     # TODO Start all dealerships
+    for i in range(number_dealerships):
+        dealership = Dealership()
+        dealership.start()
+        dealerships.append(dealership)
+
 
     # TODO Start all manufacturers
+    for i in range(number_manafacturers):
+        manufacturer = Manufacturer(CARS_TO_CREATE_PER_MANUFACTURER)
+        manufacturer.start()
+        manufactures.append(manufacturer)
 
     # TODO Wait for manufacturers and dealerships to complete
+    for manufacturer in manufactures:
+        manufacturer.join()
+
+    for dealership in dealerships:
+        dealership.join()
 
     run_time = time.perf_counter() - begin_time
 

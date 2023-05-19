@@ -21,25 +21,38 @@ import json
 RETRIEVE_THREADS = 4        # Number of retrieve_threads
 NO_MORE_VALUES = 'No more'  # Special value to indicate no more items in the queue
 
-def retrieve_thread():  # TODO add arguments
+def retrieve_thread(queue1):  # TODO add arguments
     """ Process values from the data_queue """
 
     while True:
         # TODO check to see if anything is in the queue
+        people = queue1.get()
+        if (people == NO_MORE_VALUES):
+            break
+
 
         # TODO process the value retrieved from the queue
 
+        requests1 = requests.get(people)
+        info = requests1.json()
+
+
         # TODO make Internet call to get characters name and print it out
-        pass
+        characters_name = info['name']
+        print(characters_name)
 
 
 
-def file_reader(): # TODO add arguments
+def file_reader(queue1): # TODO add arguments
     """ This thread reads the data file and places the values in the data_queue """
 
     # TODO Open the data file "urls.txt" and place items into a queue
+    with open('urls.txt') as f:
+        for line in f:
+            queue1.put(line.strip())
 
     # TODO signal the retrieve threads one more time that there are "no more values"
+    queue1.put(NO_MORE_VALUES)
 
 
 
@@ -50,11 +63,24 @@ def main():
     begin_time = time.perf_counter()
     
     # TODO create queue (if you use the queue module, then you won't need semaphores/locks)
+    queue1 = queue.Queue()
+
     
     # TODO create the threads. 1 filereader() and RETRIEVE_THREADS retrieve_thread()s
     # Pass any arguments to these thread needed to do their jobs
 
+    thread = []
+
+    t1 = threading.Thread(target=retrieve_thread, args=(queue1, ))
+    t2 = threading.Thread(target=file_reader, args=(queue1, ))
+
     # TODO Get them going
+    t1.start()
+    t2.start()
+
+
+    t1.join()
+    t2.join()
 
     # TODO Wait for them to finish
 
